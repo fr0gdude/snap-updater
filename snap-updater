@@ -1,0 +1,66 @@
+#!/bin/sh
+
+# Function to get all snaps currently running.
+get_running_list() { 
+    for snap in $snap_list; do
+        snap_trunc=$(echo "$snap" | cut -b 1-12) # Subtring from byte 1-12 since some names are truncated in ps.
+        if [ $(ps -e | grep -c "$snap_trunc") -gt 0 ]; then
+            running_list="$running_list$snap\n"
+        fi
+    done
+
+    echo "$running_list"
+}
+
+# Function to either close or open all snaps.
+perform_action() { 
+    local action=$1
+    echo "Continuing with $action."
+    if [ "$action" = "closing" ]; then
+        for snap in $running_list; do
+            killall $snap
+        done
+    elif [ "$action" = "reopening" ]; then
+        for snap in $running_list; do
+            snap run $snap >/dev/null 2>&1 &
+        done
+    else
+        sudo snap refresh
+    fi
+    echo
+}
+
+#Function to handle yes / no answer.
+confirm_action() { 
+    local action=$1
+    echo "Continue with $action? [Y/n]"
+    read answer
+    answer=$(echo "$answer" | tr '[:upper:]' '[:lower:]') # Convert to lowercase.
+    if [ "$answer" = "n" ]; then
+        echo "Aborting Snap Updater."
+        exit 0
+    elif [ -n "$answer" ] && [ "$answer" != "y" ]; then
+        echo "Invalid input, try again."
+        echo
+        confirm_action $action
+    fi
+    sudo printf "Confirmed. "
+    perform_action "$action"
+}
+
+snap_list=$(ls $HOME/snap)
+running_list=$(get_running_list)
+if [ ! -z "$running_list" ]; then
+    echo "\033[1mSnap Updater will attempt to close:\033[0m"
+    echo "$running_list"
+    echo
+    confirm_action "closing"
+    confirm_action "update"
+    perform_action "reopening"
+else
+    echo "No running snaps found."
+    echo
+    confirm_action "update"
+fi
+echo "Complete"
+exit 0
